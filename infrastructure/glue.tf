@@ -130,6 +130,22 @@ data "aws_glue_script" "scala_script" {
   }
 }
 
+resource "aws_s3_bucket" "scala_dag" {
+  bucket = "shanesscaladag"
+  acl    = "public-read-write"
+}
+
+resource "local_file" "scala_code" {
+  content  = "${data.aws_glue_script.scala_script.scala_code}"
+  filename = "${path.module}/scalaCode.scala"
+}
+
+resource "aws_s3_bucket_object" "file_upload" {
+  bucket = "${aws_s3_bucket.scala_dag.bucket}"
+  key = "transform.scala"
+  source = "${local_file.scala_code.filename}"
+}
+
 output "scala_code" {
   value = "${data.aws_glue_script.scala_script}"
 }
