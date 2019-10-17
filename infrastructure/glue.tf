@@ -29,6 +29,7 @@ resource "aws_glue_crawler" "dynamo_crawler" {
   database_name = "${aws_glue_catalog_database.aws_glue_catalog_database.name}"
   name          = "crawler"
   role          = var.CrawlerRole
+  schedule      = "cron(15 12 * * ? *)"
 
   dynamodb_target {
     path = var.DynamoTableName
@@ -130,6 +131,17 @@ data "aws_glue_script" "scala_script" {
   }
 }
 
+resource "aws_glue_trigger" "trigger" {
+  name     = "example"
+  schedule = "cron(15 12 * * ? *)"
+  type     = "SCHEDULED"
+
+  actions {
+    job_name = "${aws_glue_job.tranform_job.name}"
+  }
+}
+
+
 resource "aws_s3_bucket" "scala_dag" {
   bucket = "shanesscaladag"
   acl    = "public-read-write"
@@ -145,6 +157,20 @@ resource "aws_s3_bucket_object" "file_upload" {
   key = "transform.scala"
   source = "${local_file.scala_code.filename}"
 }
+
+resource "aws_glue_job" "tranform_job" {
+  name     = "transform_job"
+  role_arn = var.CrawlerRole
+
+  command {
+    script_location = "s3://${aws_s3_bucket.scala_dag.bucket}/${aws_s3_bucket_object.file_upload.key}"
+  }
+
+  default_arguments = {
+    "--job-language" = "scala"
+  }
+}
+
 
 output "scala_code" {
   value = "${data.aws_glue_script.scala_script}"
