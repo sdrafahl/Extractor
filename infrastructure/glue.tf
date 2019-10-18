@@ -5,6 +5,7 @@ variable "GlueCatalogDatabase" {
 
 variable "CrawlerRole" {
   type = string
+  default = "arn:aws:iam::061753407487:role/Glue"
 }
 
 variable "DynamoTableName" {
@@ -20,9 +21,45 @@ resource "aws_glue_catalog_database" "aws_glue_catalog_database" {
   name = var.GlueCatalogDatabase
 }
 
-resource "aws_glue_catalog_table" "aws_glue_catalog_table" {
+resource "aws_glue_catalog_database" "aws_glue_catalog_database_destination" {
+  name = "aws_glue_catalog_database_destination"
+}
+
+resource "aws_glue_catalog_table" "aws_glue_catalog_table_destination" {
   name          = "ExtractorCatalogTable"
-  database_name = var.GlueCatalogDatabase
+  database_name = aws_glue_catalog_database.aws_glue_catalog_database_destination.name
+  table_type = "EXTERNAL_TABLE"
+  description = "stuff"
+
+  parameters = {
+    EXTERNAL              = "TRUE"
+    "parquet.compression" = "SNAPPY"
+  }
+  
+  storage_descriptor {
+    location      = "s3://shanesscaladag/stuff"
+    input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+    
+    ser_de_info {
+      name                  = "my-stream"
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+      parameters = {
+        "serialization.format" = 1
+      }
+    }
+
+    columns {
+      name = "secondary"
+      type = "string"
+    }
+
+    columns {
+      name = "column2"
+      type = "string"
+    }
+  }
+  
 }
 
 resource "aws_glue_crawler" "dynamo_crawler" {
@@ -40,27 +77,27 @@ data "aws_glue_script" "scala_script" {
   language = "SCALA"
 
   dag_edge {
-    source = "dynamo_catalog"
-    target = "mapping"
+    source = "datasource0"
+    target = "applymapping1"
   }
 
   dag_edge {
-    source = "mapping"
-    target = "selectfields"
+    source = "applymapping1"
+    target = "selectfields2"
   }
 
   dag_edge {
-    source = "selectfields"
-    target = "resolvechoice"
+    source = "selectfields2"
+    target = "resolvechoice3"
   }
 
   dag_edge {
-    source = "resolvechoice"
-    target = "datasink"
+    source = "resolvechoice3"
+    target = "datasink4"
   }
 
   dag_node {
-    id        = "dynamo_catalog"
+    id        = "datasource0"
     node_type = "DataSource"
 
     args {
@@ -70,33 +107,33 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "table_name"
-      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table.name}\""
+      value = "\"${var.DynamoTableName}\""
     }
   }
 
   dag_node {
-    id        = "mapping"
+    id        = "applymapping1"
     node_type = "ApplyMapping"
 
     args {
       name  = "mappings"
-      value = "[(\"column1\", \"string\", \"secondary\", \"string\")]"
+      value = "[(\"column1\", \"string\", \"secondary\", \"string\"), (\"column2\", \"string\", \"column2\", \"string\")]"
     }
   }
 
   dag_node {
-    id        = "selectfields"
+    id        = "selectfields2"
     node_type = "SelectFields"
 
     args {
       name  = "paths"
-      value = "[\"column1\"]"
+      value = "[\"secondary\"]"
     }
   }
 
 
   dag_node {
-    id        = "resolvechoice"
+    id        = "resolvechoice3"
     node_type = "ResolveChoice"
 
     args {
@@ -106,27 +143,27 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "database"
-      value = "\"${aws_glue_catalog_database.aws_glue_catalog_database.name}\""
+      value = "\"${aws_glue_catalog_database.aws_glue_catalog_database_destination.name}\""
     }
 
     args {
       name  = "table_name"
-      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table.name}\""
+      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table_destination.name}\""
     }
   }
 
   dag_node {
-    id        = "datasink"
+    id        = "datasink4"
     node_type = "DataSink"
 
     args {
       name  = "database"
-      value = "\"${aws_glue_catalog_database.aws_glue_catalog_database.name}\""
+      value = "\"${aws_glue_catalog_database.aws_glue_catalog_database_destination.name}\""
     }
 
     args {
       name  = "table_name"
-      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table.name}\""
+      value = "\"dest\""
     }
   }
 }
@@ -171,10 +208,6 @@ resource "aws_glue_job" "tranform_job" {
   }
 }
 
-
-output "scala_code" {
-  value = "${data.aws_glue_script.scala_script}"
-}
 
 
 
