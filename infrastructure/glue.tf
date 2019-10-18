@@ -80,7 +80,7 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "mappings"
-      value = "[(\"column1\", \"string\", \"column1\", \"string\")]"
+      value = "[(\"column1\", \"string\", \"secondary\", \"string\")]"
     }
   }
 
