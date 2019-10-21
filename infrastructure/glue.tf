@@ -163,7 +163,7 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "table_name"
-      value = "\"dest\""
+      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table_destination.name}\""
     }
   }
 }
@@ -201,7 +201,8 @@ resource "aws_cloudformation_stack" "glue_job_stack" {
                 },
                 "Role" : "${var.CrawlerRole}",
                 "DefaultArguments" : {
-                  "--job-language": "scala"
+                  "--job-language": "scala",
+                  "--class": "GlueApp"
                 },
                 "Description" : "Glue job"      
               }
@@ -210,41 +211,3 @@ resource "aws_cloudformation_stack" "glue_job_stack" {
      }
 STACK
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
