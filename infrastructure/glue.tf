@@ -88,12 +88,12 @@ data "aws_glue_script" "scala_script" {
 
   dag_edge {
     source = "selectfields2"
-    target = "resolvechoice3"
+    target = "resolvechoice4"
   }
 
   dag_edge {
-    source = "resolvechoice3"
-    target = "datasink4"
+    source = "resolvechoice4"
+    target = "datasink5"
   }
 
   dag_node {
@@ -133,7 +133,7 @@ data "aws_glue_script" "scala_script" {
 
 
   dag_node {
-    id        = "resolvechoice3"
+    id        = "resolvechoice4"
     node_type = "ResolveChoice"
 
     args {
@@ -148,12 +148,12 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "table_name"
-      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table_destination.name}\""
+      value = "\"dest\""
     }
   }
 
   dag_node {
-    id        = "datasink4"
+    id        = "datasink5"
     node_type = "DataSink"
 
     args {
@@ -167,17 +167,6 @@ data "aws_glue_script" "scala_script" {
     }
   }
 }
-
-resource "aws_glue_trigger" "trigger" {
-  name     = "example"
-  schedule = "cron(15 12 * * ? *)"
-  type     = "SCHEDULED"
-
-  actions {
-    job_name = "${aws_glue_job.tranform_job.name}"
-  }
-}
-
 
 resource "aws_s3_bucket" "scala_dag" {
   bucket = "shanesscaladag"
@@ -195,17 +184,31 @@ resource "aws_s3_bucket_object" "file_upload" {
   source = "${local_file.scala_code.filename}"
 }
 
-resource "aws_glue_job" "tranform_job" {
-  name     = "transform_job"
-  role_arn = var.CrawlerRole
+resource "aws_cloudformation_stack" "glue_job_stack" {
+  name = "glue-job-stack"
 
-  command {
-    script_location = "s3://${aws_s3_bucket.scala_dag.bucket}/${aws_s3_bucket_object.file_upload.key}"
-  }
-
-  default_arguments = {
-    "--job-language" = "scala"
-  }
+  template_body = <<STACK
+     {
+       "Resources": {
+          "GlueJob": {
+            "Type" : "AWS::Glue::Job",
+            "Properties" : {
+                "Name" :"glueetl",
+                "GlueVersion": "1.0",
+                "Command" : {
+                  "Name":"glueetl",
+                  "ScriptLocation": "s3://${aws_s3_bucket.scala_dag.bucket}/${aws_s3_bucket_object.file_upload.key}"
+                },
+                "Role" : "${var.CrawlerRole}",
+                "DefaultArguments" : {
+                  "--job-language": "scala"
+                },
+                "Description" : "Glue job"      
+              }
+           } 
+         }
+     }
+STACK
 }
 
 
