@@ -39,7 +39,7 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_destination" {
   storage_descriptor {
     location      = "s3://shanesscaladag/stuff"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
-    output_format = "org.apache.hadoop.hive.ql.io.pfarquet.MapredParquetOutputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
     
     ser_de_info {
       name                  = "my-stream"
