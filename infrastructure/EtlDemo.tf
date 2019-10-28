@@ -20,11 +20,6 @@ resource "aws_dynamodb_table" "test_avro_data_source_index" {
     name = "id"
     type = "S"
   }
-  
-  ttl {
-    attribute_name = "TimeToExist"
-    enabled        = false
-  }
 }
 
 variable "GlueCatalogDatabaseName" {
@@ -203,11 +198,13 @@ data "aws_glue_script" "scala_script" {
   dag_edge {
     source = "datasource1"
     target = "joindynamoands3"
+    target_parameter = "frame2"
   }
   
   dag_edge {
     source = "datasource0"
     target = "joindynamoands3"
+    target_parameter = "frame1"
   }
 
   dag_edge {
