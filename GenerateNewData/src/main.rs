@@ -49,14 +49,13 @@ fn main() -> Result<(), Error> {
     
     let input = writer.into_inner();
     let comped = snappy::compress(&input);
-    print_to_file(comped);
+    print_to_file(input);
     read_avro_file(schema);
     Ok(())
 }
 
 fn read_avro_file(schema: Schema) -> Result<(), Error> {
-    let compressedb64 = fs::read("avroData")?;
-    let compressed = decode(&compressedb64)?;
+    let compressed = fs::read("avroData.avro.snappy")?;
     let decompressed = snappy::decompress(&compressed)?;
     let reader = Reader::with_schema(&schema, &decompressed[..])?;
     for record in reader {
@@ -66,7 +65,6 @@ fn read_avro_file(schema: Schema) -> Result<(), Error> {
 } 
 
 fn print_to_file(avroData: Vec<u8>) {
-    let base64Data = encode(&avroData);
-    fs::write("avroData", &base64Data);
+    fs::write("avroData.avro.snappy", &avroData);
 }
 
