@@ -5,8 +5,8 @@ resource "aws_s3_bucket" "test_avro_data_source" {
 
 resource "aws_s3_bucket_object" "file_upload_testdata" {
   bucket = "${aws_s3_bucket.test_avro_data_source.bucket}"
-  key = "GenerateNewData"
-  source = "${path.module}/../GenerateNewData/target/debug/GenerateNewData"
+  key = "avroData.avro.snappy"
+  source = "${path.module}/../GenerateNewData/avroData.avro.snappy"
 }
 
 resource "aws_dynamodb_table" "test_avro_data_source_index" {
@@ -19,16 +19,6 @@ resource "aws_dynamodb_table" "test_avro_data_source_index" {
   attribute {
     name = "id"
     type = "S"
-  }
-
-  attribute {
-    name = "s3location"
-    type = "S"
-  }
-  
-  ttl {
-    attribute_name = "TimeToExist"
-    enabled        = false
   }
 }
 
@@ -53,18 +43,18 @@ resource "aws_glue_catalog_database" "aws_glue_catalog_database" {
 }
 
 resource "aws_glue_crawler" "s3_crawler" {
-  database_name = "${aws_dynamodb_table.test_avro_data_source_index.name}"
+  database_name = "${aws_glue_catalog_database.aws_glue_catalog_database.name}"
   name          = "s3Crawler"
   role          = var.CrawlerRole
 
   s3_target {
-    path = "s3://${aws_s3_bucket.test_avro_data_source.bucket}/${aws_s3_bucket_object.file_upload.key}"
+    path = "s3://${aws_s3_bucket.test_avro_data_source.bucket}"
   }
 }
 
 resource "aws_glue_crawler" "dynamo_crawler" {
-  database_name = "${aws_dynamodb_table.test_avro_data_source_index.name}"
-  name          = "dynamoCrawler"
+  database_name = "${aws_glue_catalog_database.aws_glue_catalog_database.name}"
+  name          = "CrawlerDynamo"
   role          = var.CrawlerRole
   schedule      = "cron(15 12 * * ? *)"
 
@@ -103,7 +93,7 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_merged" {
     }
 
     columns {
-      name = "\"${aws_dynamodb_table.test_avro_data_source_index.range_key}\""
+      name = "\"s3location\""
       type = "string"
     }
   }
@@ -112,24 +102,19 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_merged" {
 data "aws_glue_script" "scala_script" {
   language = "SCALA"
 
-  dag_edge {
-    source = "datasource_dynamo"
-    target = "joinDynamoAndS3"
-  }
+  dag_node {
+    id        = "datasourceDynamo"
+    node_type = "DataSource"
 
-  dag_edge {
-    source = "datasourceS3"
-    target = "joinDynamoAndS3"
-  }
+    args {
+      name  = "database"
+      value = "\"${aws_glue_catalog_database.aws_glue_catalog_database.name}\""
+    }
 
-  dag_edge {
-    source = "joinDynamoAndS3"
-    target = "resolvechoice"
-  }
-
-  dag_edge {
-    source = "resolvechoice"
-    target = "datasink"
+    args {
+      name  = "table_name"
+      value = "\"${aws_dynamodb_table.test_avro_data_source_index.name}\""
+    }
   }
   
   dag_node {
@@ -146,7 +131,7 @@ data "aws_glue_script" "scala_script" {
       value = "\"${aws_s3_bucket.test_avro_data_source.bucket}\""
     }
   }
-
+  
   dag_node {
     id        = "linkLookup"
     node_type = "Map"
@@ -165,25 +150,29 @@ data "aws_glue_script" "scala_script" {
   dag_node {
     id        = "joinDynamoAndS3"
     node_type = "Join"
-
+    
     args {
       name  = "frame1"
-      value = "datasourceS3"
+      value = "datasource0"
+      param = false
     }
-
+    
     args {
       name  = "frame2"
-      value = "datasourceDynamo"
+      value = "datasource1"
+      param = false
     }
 
     args {
       name  = "keys1"
       value = "[\"${aws_s3_bucket_object.file_upload_testdata.key}\"]"
+      param = true
     }
 
     args {
       name = "keys2"
       value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}\", \"s3location\"]"
+      param = true
     }
   }
   
@@ -221,6 +210,28 @@ data "aws_glue_script" "scala_script" {
       value = "\"${aws_glue_catalog_table.aws_glue_catalog_table_merged.name}\""
     }
   }
+
+  dag_edge {
+    source = "datasourceDynamo"
+    target = "joindynamoands3"
+    target_parameter = "frame2"
+  }
+  
+  dag_edge {
+    source = "datasourceS3"
+    target = "joindynamoands3"
+    target_parameter = "frame1"
+  }
+
+  dag_edge {
+    source = "joindynamoands3"
+    target = "resolvechoice"
+  }
+
+  dag_edge {
+    source = "resolvechoice"
+    target = "datasink"
+  }
 }
 
 resource "aws_s3_bucket" "scala_dag" {
@@ -230,7 +241,7 @@ resource "aws_s3_bucket" "scala_dag" {
 
 resource "local_file" "scala_code" {
   content  = "${data.aws_glue_script.scala_script.scala_code}"
-  filename = "${path.module}/scalaCode.scala"
+  filename = "${path.module}/scalaCode_gen.scala"
 }
 
 resource "aws_s3_bucket_object" "file_upload" {
