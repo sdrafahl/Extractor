@@ -45,6 +45,7 @@ variable "CrawlerRole" {
 provider "aws" {
   region = "us-east-1"
   profile = "default"
+  max_retries = 1
 }
 
 resource "aws_glue_catalog_database" "aws_glue_catalog_database" {
@@ -143,6 +144,21 @@ data "aws_glue_script" "scala_script" {
     args {
       name  = "table_name"
       value = "\"${aws_s3_bucket.test_avro_data_source.bucket}\""
+    }
+  }
+
+  dag_node {
+    id        = "linkLookup"
+    node_type = "Map"
+
+    args {
+      name  = "frame"
+      value = "\"datasources3\""
+    }
+
+    args {
+      name  = "f"
+      value = "\"${file("${path.module}/map.scala")}\""
     }
   }
 
