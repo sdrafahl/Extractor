@@ -26,22 +26,21 @@ fn main() -> Result<(), Error> {
         {
             "type": "record",
             "name": "test",
-            "fields": [
-                {"name": "a", "type": "long", "default": 42},
-                {"name": "b", "type": "string"},
-                {"name": "link", "type": "string"}
+            "fields": [               
+                {"name": "a", "type": "long"},
+                {"name": "b", "type": "long"},
+                {"name": "c", "type": "long"}
             ]
         }
     "#;
 
     let schema = Schema::parse_str(raw_schema)?;
     
-    //let mut writer = Writer::with_codec(&schema, Vec::new(), Codec::Snappy);
     let mut writer = Writer::with_codec(&schema, Vec::new(), Codec::Null);
     let mut record = Record::new(writer.schema()).unwrap();
-    record.put("a", 27i64);
-    record.put("b", "foo");
-    record.put("link", "www.google.com");
+    record.put("a", 20i64);
+    record.put("b", 30i64);
+    record.put("c", 40i64);
 
     writer.append(record)?;
 

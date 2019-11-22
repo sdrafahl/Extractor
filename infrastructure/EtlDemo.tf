@@ -32,6 +32,11 @@ variable "CrawlerRole" {
   default = "arn:aws:iam::061753407487:role/Glue"
 }
 
+variable "columnName" {
+  type = string
+  default = "average"
+}
+
 provider "aws" {
   region = "us-east-1"
   profile = "default"
@@ -72,10 +77,48 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_merged" {
   parameters = {
     EXTERNAL              = "TRUE"
     "parquet.compression" = "SNAPPY"
+    "classification" = "avro"
   }
   
   storage_descriptor {
     location      = "s3://${aws_s3_bucket.scala_dag.bucket}/mergedTable"
+    input_format  = "org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat"
+
+    ser_de_info {
+      name                  = "merged"
+      serialization_library = "org.apache.hadoop.hive.serde2.avro.AvroSerDe"
+      parameters = {
+	"serialization.format" = 1
+      }
+    }
+
+    columns {
+      name = "average"
+      type = "string"
+    }
+
+    columns {
+      name = "id"
+      type = "string"
+    }
+  }
+}
+
+resource "aws_glue_catalog_table" "aws_glue_catalog_table_mapped" {
+  name          = "mapped_table"
+  database_name = aws_glue_catalog_database.aws_glue_catalog_database.name
+  table_type = "EXTERNAL_TABLE"
+  description = "table used to store the mapped data"
+
+  parameters = {
+    EXTERNAL              = "TRUE"
+    "parquet.compression" = "SNAPPY"
+    "classification" = "parquet"
+  }
+  
+  storage_descriptor {
+    location      = "s3://${aws_s3_bucket.scala_dag.bucket}/mappedTable"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
     
@@ -83,17 +126,12 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_merged" {
       name                  = "my-stream"
       serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
       parameters = {
-        "serialization.format" = 1
+	"serialization.format" = 1
       }
     }
 
     columns {
-      name = "\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}\""
-      type = "string"
-    }
-
-    columns {
-      name = "\"s3location\""
+      name = "average"
       type = "string"
     }
   }
@@ -118,7 +156,7 @@ data "aws_glue_script" "scala_script" {
   }
   
   dag_node {
-    id        = "datasourceS3"
+    id        = "mappedsource"
     node_type = "DataSource"
 
     args {
@@ -128,51 +166,32 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "table_name"
-      value = "\"${aws_s3_bucket.test_avro_data_source.bucket}\""
+      value = "\"${aws_glue_catalog_table.aws_glue_catalog_table_mapped.name}\""
     }
   }
   
   dag_node {
-    id        = "linkLookup"
-    node_type = "Map"
-
-    args {
-      name  = "frame"
-      value = "\"datasources3\""
-    }
-
-    args {
-      name  = "f"
-      value = "\"${file("${path.module}/map.scala")}\""
-    }
-  }
-
-  dag_node {
-    id        = "joinDynamoAndS3"
+    id        = "joindynamoands3"
     node_type = "Join"
     
     args {
       name  = "frame1"
       value = "datasource0"
-      param = false
     }
     
     args {
       name  = "frame2"
       value = "datasource1"
-      param = false
     }
 
     args {
       name  = "keys1"
-      value = "[\"${aws_s3_bucket_object.file_upload_testdata.key}\"]"
-      param = true
+      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}, ${var.columnName}\"]"
     }
 
     args {
       name = "keys2"
-      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}\", \"s3location\"]"
-      param = true
+      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}, ${var.columnName}\"]"
     }
   }
   
@@ -218,7 +237,7 @@ data "aws_glue_script" "scala_script" {
   }
   
   dag_edge {
-    source = "datasourceS3"
+    source = "mappedsource"
     target = "joindynamoands3"
     target_parameter = "frame1"
   }
@@ -235,13 +254,29 @@ data "aws_glue_script" "scala_script" {
 }
 
 resource "aws_s3_bucket" "scala_dag" {
-  bucket = "shanesscaladag"
+  bucket = "shanesscala"
+  acl    = "public-read-write"
+}
+
+resource "aws_s3_bucket" "atheneWorkspace" {
+  bucket = "athene-workspace"
+  acl    = "public-read-write"
+}
+
+resource "aws_s3_bucket" "scala_map" {
+  bucket = "shanesscalamap"
   acl    = "public-read-write"
 }
 
 resource "local_file" "scala_code" {
   content  = "${data.aws_glue_script.scala_script.scala_code}"
   filename = "${path.module}/scalaCode_gen.scala"
+}
+
+resource "aws_s3_bucket_object" "file_upload_map" {
+  bucket = "${aws_s3_bucket.scala_map.bucket}"
+  key = "map.scala"
+  source = "${path.module}/map.scala"
 }
 
 resource "aws_s3_bucket_object" "file_upload" {
@@ -272,7 +307,24 @@ resource "aws_cloudformation_stack" "glue_job_stack" {
                 },
                 "Description" : "Glue job"      
               }
-           } 
+           },
+           "MapGlueJob": {
+            "Type" : "AWS::Glue::Job",
+            "Properties" : {
+                "Name" :"mapData",
+                "GlueVersion": "1.0",
+                "Command" : {
+                  "Name":"glueetl",
+                  "ScriptLocation": "s3://${aws_s3_bucket.scala_map.bucket}/${aws_s3_bucket_object.file_upload_map.key}"
+                },
+                "Role" : "${var.CrawlerRole}",
+                "DefaultArguments" : {
+                  "--job-language": "scala",
+                  "--class": "GlueApp"
+                },
+                "Description" : "Glue job"      
+              }
+           }
          }
      }
 STACK
