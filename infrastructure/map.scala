@@ -23,13 +23,14 @@ object GlueApp {
     val datasink = glueContext.getCatalogSink(database = "glue_database", tableName = "mapped_table", redshiftTmpDir = "", transformationContext = "datasink").writeDynamicFrame(mapped)
     Job.commit()
   }
+
   def mapFunction(dynamicRecord: com.amazonaws.services.glue.DynamicRecord): com.amazonaws.services.glue.DynamicRecord = {
-        val a = dynamicRecord.getField("a").get
-        val b = dynamicRecord.getField("b").get
-        val c = dynamicRecord.getField("c").get
-        val response = "Response"
+        val a: Int = dynamicRecord.getField("a").get.asInstanceOf[Int]
+        val b: Int = dynamicRecord.getField("b").get.asInstanceOf[Int]
+        val c: Int = dynamicRecord.getField("c").get.asInstanceOf[Int]
+        val response: String = "" + a + b + c
         val row = Row(response, "testId")
-        val schema = StructType(StructField("average", StringType, true) :: StructField("id", StringType, true) :: Nil)
+        val schema = StructType(StructField("sum", StringType, true) :: StructField("id", StringType, true) :: Nil)
 	DynamicRecord(row, schema)
   }
 }

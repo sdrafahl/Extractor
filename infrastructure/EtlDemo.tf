@@ -34,7 +34,7 @@ variable "CrawlerRole" {
 
 variable "columnName" {
   type = string
-  default = "average"
+  default = "sum"
 }
 
 provider "aws" {
@@ -94,12 +94,12 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_merged" {
     }
 
     columns {
-      name = "average"
+      name = "id"
       type = "string"
     }
 
     columns {
-      name = "id"
+      name = "sum"
       type = "string"
     }
   }
@@ -131,7 +131,12 @@ resource "aws_glue_catalog_table" "aws_glue_catalog_table_mapped" {
     }
 
     columns {
-      name = "average"
+      name = "sum"
+      type = "string"
+    }
+
+    columns {
+      name = "id"
       type = "string"
     }
   }
@@ -186,12 +191,12 @@ data "aws_glue_script" "scala_script" {
 
     args {
       name  = "keys1"
-      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}, ${var.columnName}\"]"
+      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}\", \"${var.columnName}\"]"
     }
 
     args {
       name = "keys2"
-      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}, ${var.columnName}\"]"
+      value = "[\"${aws_dynamodb_table.test_avro_data_source_index.hash_key}\", \"${var.columnName}\"]"
     }
   }
   
